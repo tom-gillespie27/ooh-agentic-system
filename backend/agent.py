@@ -6,7 +6,6 @@ from weather import get_weather
 
 client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-# Define the tool Claude can call
 tools = [
     {
         "name": "get_weather",
@@ -23,6 +22,10 @@ tools = [
 ]
 
 def choose_creative(billboard, local_context=None):
+    print("\n" + "="*60)
+    print(f"🎯 AGENT STARTED: {billboard['name']} ({billboard['location']})")
+    print("="*60)
+
     creative_list = "\n".join(
         f"- {c['id']}: {c['name']} — {c['description']}" for c in CREATIVES
     )
@@ -47,7 +50,7 @@ Once you have the weather, respond ONLY with valid JSON in this exact format, no
 
     messages = [{"role": "user", "content": "Choose the best creative for this billboard right now."}]
 
-    # First call - Claude decides to use the tool
+    print("🧠 Step 1: Sending request to Claude with available tools...")
     response = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=500,
@@ -55,17 +58,25 @@ Once you have the weather, respond ONLY with valid JSON in this exact format, no
         tools=tools,
         messages=messages
     )
+    print(f"   ↳ Claude's stop reason: '{response.stop_reason}'")
 
-    # Handle tool use loop
+    step = 2
     while response.stop_reason == "tool_use":
         messages.append({"role": "assistant", "content": response.content})
 
         tool_results = []
         for block in response.content:
+            if block.type == "text" and block.text.strip():
+                print(f"💭 Claude's reasoning before tool call: \"{block.text.strip()}\"")
+
             if block.type == "tool_use" and block.name == "get_weather":
                 lat = block.input["lat"]
                 lon = block.input["lon"]
+                print(f"🔧 Step {step}: Claude called tool 'get_weather'")
+                print(f"   ↳ Arguments: lat={lat}, lon={lon}")
+
                 weather_data = get_weather(lat, lon)
+                print(f"   ↳ Tool result: {weather_data}")
 
                 tool_results.append({
                     "type": "tool_result",
@@ -75,6 +86,8 @@ Once you have the weather, respond ONLY with valid JSON in this exact format, no
 
         messages.append({"role": "user", "content": tool_results})
 
+        step += 1
+        print(f"🧠 Step {step}: Sending tool result back to Claude for final decision...")
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=500,
@@ -82,8 +95,8 @@ Once you have the weather, respond ONLY with valid JSON in this exact format, no
             tools=tools,
             messages=messages
         )
+        print(f"   ↳ Claude's stop reason: '{response.stop_reason}'")
 
-    # Final response - extract the JSON
     final_text = ""
     for block in response.content:
         if block.type == "text":
@@ -91,4 +104,12 @@ Once you have the weather, respond ONLY with valid JSON in this exact format, no
 
     final_text = final_text.strip().replace("```json", "").replace("```", "").strip()
 
-    return json.loads(final_text)
+    result = json.loads(final_text)
+
+    print("\n✅ FINAL DECISION:")
+    print(f"   Selected creative: {result['selected_creative_id']}")
+    print(f"   Weather summary:   {result['weather_summary']}")
+    print(f"   Reasoning:         {result['reasoning']}")
+    print("="*60 + "\n")
+
+    return result
