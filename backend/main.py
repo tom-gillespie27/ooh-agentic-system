@@ -17,13 +17,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/billboards")
 def list_billboards():
     return BILLBOARDS
 
+
 @app.get("/creatives")
 def list_creatives():
     return CREATIVES
+
 
 @app.get("/decision/{billboard_id}")
 def get_decision(billboard_id: str):
@@ -31,14 +34,12 @@ def get_decision(billboard_id: str):
     if not billboard:
         return {"error": "Billboard not found"}
 
-    weather = get_weather(billboard["lat"], billboard["lon"])
-    decision = choose_creative(billboard, weather)
+    decision = choose_creative(billboard)
 
     selected = next((c for c in CREATIVES if c["id"] == decision["selected_creative_id"]), None)
 
     return {
         "billboard": billboard,
-        "weather": weather,
         "decision": decision,
         "creative": selected
     }
